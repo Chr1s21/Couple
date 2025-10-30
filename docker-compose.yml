@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # ------------------------------------
+  # 1. API Service (Node.js/Express Backend)
+  # ------------------------------------
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: couple-api
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+    volumes:
+      - ./backend/src:/usr/src/app/src
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: development
+      DB_HOST: db
+
+  # ------------------------------------
+  # 2. Database Service (PostgreSQL) - KORRIGIERT
+  # ------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: couple-db
+    restart: always
+    ports:
+      - "5433:5432"           # Wir verwenden 5433 als Host-Port (aus dem letzten Schritt)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - ./.env
+    # NEU: Diese Umgebungsvariablen sind für das PostgreSQL-Docker-Image erforderlich!
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+
+# Volumes für persistenten Speicher definieren
+volumes:
+  postgres_data:
