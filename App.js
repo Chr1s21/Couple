@@ -1,20 +1,32 @@
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, Button, Image, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// WICHTIG: Ersetzen Sie 172.19.192.1:3000 durch die tatsächliche IP Ihres Computers und den Port.
-// Achten Sie auf die IP, da 172.x.x.x oft nicht von mobilen Geräten erreicht wird.
-// Verwenden Sie die IP, die Sie über 'ipconfig' (Windows) gefunden haben (meist 192.168.x.x).
+// WICHTIG: Ersetzen Sie 172.19.192.1 durch die tatsächliche IP Ihres Computers (Host-PC)
+// Die IP muss im selben lokalen Netzwerk wie Ihr Handy/Emulator liegen.
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 const API_URL = 'http://172.19.192.1:3000/api'; 
 
-
-export default function UploadPage() { // Komponente umbenannt, um Verwirrung zu vermeiden
+export default function App() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('Backend bereit: IP anpassen!');
+  const [isPermissionGranted, setIsPermissionGranted] = useState(false);
+
+  // Berechtigung beim Start anfragen
+  useEffect(() => {
+    (async () => {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status === 'granted') {
+        setIsPermissionGranted(true);
+      } else {
+        // Meldet den Fehler, aber unterbricht nicht die App-Funktion
+        console.warn('Medienbibliothek-Berechtigung wurde nicht erteilt.');
+      }
+    })();
+  }, []);
 
   // Funktion zum Hochladen des Bildes an das Docker-Backend
   const uploadImageToBackend = async (imageUri) => {
@@ -24,34 +36,31 @@ export default function UploadPage() { // Komponente umbenannt, um Verwirrung zu
     setUploadMessage('Wird hochgeladen...');
 
     try {
-      // 1. Erstellung des FormData-Objekts (wie bei einem HTML-Formular-Upload)
       const formData = new FormData();
-      
-      // Dateiname aus URI ableiten
       const filename = imageUri.split('/').pop();
 
       // Das Bild-Objekt zur FormData hinzufügen
       formData.append('image', {
         uri: imageUri,
         name: filename,
-        type: 'image/jpeg', // Oder 'image/png', je nach Dateityp
+        type: 'image/jpeg',
       });
       
-      // Zusätzliche Metadaten hinzufügen (vom Backend in routes.js erwartet)
+      // Zusätzliche Metadaten hinzufügen (vom Backend erwartet)
       formData.append('title', 'Mein erster Upload');
       formData.append('description', 'Getestet am ' + new Date().toLocaleTimeString());
 
-      // 2. Senden der POST-Anfrage an den Docker-Endpunkt
+      // Senden der POST-Anfrage
       const response = await fetch(`${API_URL}/memories/upload`, {
         method: 'POST',
+        // Content-Type wird von FormData automatisch korrekt gesetzt
         body: formData, 
       });
 
-      // Wenn die Antwort nicht 200-299 ist, wirf einen Fehler.
       if (!response.ok) {
-         // Versuche, eine Fehlermeldung vom Server zu lesen
         const errorData = await response.json().catch(() => ({ error: 'Server gab ungültige Antwort.' }));
-        throw new Error(errorData.error || response.statusText);
+        // Werfen Sie eine detailliertere Ausnahme
+        throw new Error(errorData.error || `Serverfehler: HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -61,7 +70,6 @@ export default function UploadPage() { // Komponente umbenannt, um Verwirrung zu
       
     } catch (error) {
       console.error('Fehler beim Upload:', error);
-      // Detailreichere Fehlermeldung im Statusfeld
       setUploadMessage(`Fehler: ${error.message}. IP/Port prüfen!`); 
       Alert.alert('Upload Fehler', `Upload konnte nicht abgeschlossen werden. Grund: ${error.message}`);
     } finally {
@@ -71,37 +79,41 @@ export default function UploadPage() { // Komponente umbenannt, um Verwirrung zu
 
 
   const pickImage = async () => {
-    // Fragt nach Berechtigung und öffnet die Galerie
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Berechtigung erforderlich', 'Wir brauchen Zugriff auf Ihre Fotos, um fortzufahren.');
-      return;
+    // Falls Berechtigung nachträglich entzogen wurde
+    if (!isPermissionGranted) {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+          Alert.alert('Berechtigung Fehlt', 'Bitte erlauben Sie den Zugriff auf die Galerie in den App-Einstellungen.');
+          return;
+      }
+      setIsPermissionGranted(true);
     }
     
+    // START: Öffnen der Galerie
     let result = await ImagePicker.launchImageLibraryAsync({
-      // FIX: Hier verwenden wir ImagePicker.MediaTypeOptions.Images,
-      // was als korrekter Wert für den Enum in dieser Version erwartet wird.
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Korrekter Enum-Wert
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
     });
 
-
     if (!result.canceled) {
       const uri = result.assets[0].uri;
       setSelectedImage(uri);
-      // Führt den Upload sofort aus
       uploadImageToBackend(uri); 
     }
   };
+  
+  const buttonTitle = isUploading 
+    ? "Wird hochgeladen..." 
+    : (isPermissionGranted ? "Bild auswählen & hochladen" : "Berechtigung prüfen...");
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Couple Memories</Text>
       
       <Button 
-        title={isUploading ? "Wird hochgeladen..." : "Bild auswählen & hochladen"} 
+        title={buttonTitle} 
         onPress={pickImage} 
         disabled={isUploading}
       />
