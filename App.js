@@ -3,13 +3,18 @@ import { StyleSheet, Text, View, Button, Image, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// WICHTIG: Ersetzen Sie 172.19.192.1:3000 durch die tatsächliche IP Ihres Computers und den Port.
+// Achten Sie auf die IP, da 172.x.x.x oft nicht von mobilen Geräten erreicht wird.
+// Verwenden Sie die IP, die Sie über 'ipconfig' (Windows) gefunden haben (meist 192.168.x.x).
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 const API_URL = 'http://172.19.192.1:3000/api'; 
 
 
-export default function App() {
+export default function UploadPage() { // Komponente umbenannt, um Verwirrung zu vermeiden
   const [selectedImage, setSelectedImage] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadMessage, setUploadMessage] = useState('Backend bereit: ' + API_URL);
+  const [uploadMessage, setUploadMessage] = useState('Backend bereit: IP anpassen!');
 
   // Funktion zum Hochladen des Bildes an das Docker-Backend
   const uploadImageToBackend = async (imageUri) => {
@@ -32,33 +37,33 @@ export default function App() {
         type: 'image/jpeg', // Oder 'image/png', je nach Dateityp
       });
       
-      // Zusätzliche Metadaten hinzufügen (wie vom Backend erwartet)
+      // Zusätzliche Metadaten hinzufügen (vom Backend in routes.js erwartet)
       formData.append('title', 'Mein erster Upload');
       formData.append('description', 'Getestet am ' + new Date().toLocaleTimeString());
 
       // 2. Senden der POST-Anfrage an den Docker-Endpunkt
       const response = await fetch(`${API_URL}/memories/upload`, {
         method: 'POST',
-        // ACHTUNG: 'Content-Type' NICHT manuell setzen. FormData macht das automatisch
-        // und setzt den korrekten Boundary-Wert.
         body: formData, 
       });
 
+      // Wenn die Antwort nicht 200-299 ist, wirf einen Fehler.
+      if (!response.ok) {
+         // Versuche, eine Fehlermeldung vom Server zu lesen
+        const errorData = await response.json().catch(() => ({ error: 'Server gab ungültige Antwort.' }));
+        throw new Error(errorData.error || response.statusText);
+      }
+
       const data = await response.json();
       
-      if (response.ok) {
-        setUploadMessage(`Upload erfolgreich! ID: ${data.memory.id}`);
-        Alert.alert('Erfolg', `Bild erfolgreich gespeichert. URL: ${API_URL}${data.public_url}`);
-      } else {
-        // Fehler vom Server
-        setUploadMessage(`Upload fehlgeschlagen: ${data.error || response.statusText}`);
-        Alert.alert('Fehler', `Upload fehlgeschlagen: ${data.error || 'Unbekannter Fehler'}`);
-      }
+      setUploadMessage(`Upload erfolgreich! ID: ${data.memory.id}`);
+      Alert.alert('Erfolg', `Bild erfolgreich gespeichert.`);
       
     } catch (error) {
-      console.error('Netzwerk- oder API-Fehler:', error);
-      setUploadMessage('Netzwerkfehler: Konnte Backend nicht erreichen. IP/Port prüfen!');
-      Alert.alert('Netzwerkfehler', 'Stellen Sie sicher, dass Docker läuft und die IP-Adresse in App.js korrekt ist.');
+      console.error('Fehler beim Upload:', error);
+      // Detailreichere Fehlermeldung im Statusfeld
+      setUploadMessage(`Fehler: ${error.message}. IP/Port prüfen!`); 
+      Alert.alert('Upload Fehler', `Upload konnte nicht abgeschlossen werden. Grund: ${error.message}`);
     } finally {
       setIsUploading(false);
     }
@@ -74,11 +79,14 @@ export default function App() {
     }
     
     let result = await ImagePicker.launchImageLibraryAsync({
+      // FIX: Hier verwenden wir ImagePicker.MediaTypeOptions.Images,
+      // was als korrekter Wert für den Enum in dieser Version erwartet wird.
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
     });
+
 
     if (!result.canceled) {
       const uri = result.assets[0].uri;
