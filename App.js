@@ -11,6 +11,7 @@ export default function App() {
   const [uploadMessage, setUploadMessage] = useState('Backend bereit: IP anpassen!');
   const [isPermissionGranted, setIsPermissionGranted] = useState(false);
 
+  // 🔐 Berechtigungen prüfen
   useEffect(() => {
     (async () => {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -18,9 +19,10 @@ export default function App() {
     })();
   }, []);
 
-  // ✅ Upload Funktion
+  // 📤 Upload Funktion
   const uploadImageToBackend = async (imageUri) => {
     if (isUploading) return;
+
     setIsUploading(true);
     setUploadMessage('Wird hochgeladen...');
 
@@ -30,70 +32,78 @@ export default function App() {
       const fileExtension = filename.split('.').pop().toLowerCase();
       const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
 
-      formData.append("image", {   // ✅ richtiger Feldname
-        uri: imageUri,
-        name: filename,
-        type: mimeType,
-      });
-
+      formData.append("image", { uri: imageUri, name: filename, type: mimeType });
       formData.append("title", "Mein erster Upload");
       formData.append("description", "Getestet am " + new Date().toLocaleTimeString());
 
       const response = await fetch(`${API_URL}/memories/upload`, {
         method: 'POST',
         body: formData,
+        headers: { "Content-Type": "multipart/form-data" }
       });
 
-      const rawText = await response.text();
-      console.log("RAW RESPONSE:", rawText);  // ✅ Debug
+      const text = await response.text();
+      console.log("SERVER:", text);
 
-      let data;
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        throw new Error("Server gab keine gültige JSON-Antwort zurück.");
-      }
+      const data = JSON.parse(text);
 
-      if (!response.ok) {
-        throw new Error(data.error || `HTTP Fehler: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(data.error);
 
-      setUploadMessage(`Upload erfolgreich! ID: ${data.memory.id}`);
+      setUploadMessage(`✅ Upload erfolgreich! ID: ${data.memory.id}`);
       Alert.alert("Erfolg", "Bild erfolgreich gespeichert.");
-    } 
-    catch (error) {
-      console.error("Fehler beim Upload:", error);
-      setUploadMessage(`Fehler: ${error.message}.`);
-      Alert.alert("Upload Fehler", error.message);
-    } 
-    finally {
+    } catch (err) {
+      console.error(err);
+      setUploadMessage(`❌ Fehler: ${err.message}`);
+      Alert.alert("Upload Fehler", err.message);
+    } finally {
       setIsUploading(false);
     }
   };
 
-  // ✅ Neues ImagePicker API
+  // 🖼️ Bild auswählen
   const pickImage = async () => {
-    if (!isPermissionGranted) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (status !== 'granted') {
+      setIsPermissionGranted(false);
+      return Alert.alert(
+        "Berechtigung fehlt",
+        "Bitte erlaube der App Zugriff auf deine Galerie."
+      );
+    }
+
+    setIsPermissionGranted(true);
 
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: [ImagePicker.MediaType.image], // ✅ Neuer Enum
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // ✅ FIX
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
     });
 
-    if (!result.canceled) {
-      const uri = result.assets[0].uri;
-      setSelectedImage(uri);
-      uploadImageToBackend(uri);
+    if (result.canceled) {
+      console.log("User canceled");
+      return;
     }
+
+    const uri = result.assets[0].uri;
+    setSelectedImage(uri);
+    uploadImageToBackend(uri);
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Couple Memories</Text>
-      <Button title="Bild auswählen & hochladen" onPress={pickImage} disabled={isUploading} />
-      <Text style={styles.statusText}>{uploadMessage}</Text>
+
+      <Button 
+        title={isUploading ? "Lädt..." : "Bild auswählen & hochladen"} 
+        onPress={pickImage}
+        disabled={isUploading}
+      />
+
+      <Text style={styles.statusText}>
+        {isPermissionGranted ? uploadMessage : "❌ Galerie Berechtigung fehlt"}
+      </Text>
 
       {selectedImage && (
         <View style={styles.imageContainer}>
@@ -102,11 +112,10 @@ export default function App() {
         </View>
       )}
 
-      <Text style={styles.footer}>Docker Backend über Host-IP erreichbar.</Text>
+      <Text style={styles.footer}>Backend muss im gleichen WLAN sein.</Text>
       <StatusBar style="auto" />
     </View>
   );
-
 }
 
 const styles = StyleSheet.create({
@@ -154,4 +163,3 @@ const styles = StyleSheet.create({
     color: '#aaa',
   },
 });
-
