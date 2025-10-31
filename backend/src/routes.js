@@ -5,94 +5,79 @@ import { query } from './database.js';
 
 const router = Router();
 
-// --- Konfiguration für Multer (lokale Dateiverwaltung) ---
-// Ziel: Bilder temporär oder für die Entwicklung lokal im Container-Volume speichern.
-// Der 'uploads' Ordner muss im Hauptverzeichnis des Backends existieren und als Volume in Docker-Compose definiert sein!
+// --- Multer Konfiguration (Uploads lokal speichern) ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Speichert Dateien im Ordner 'uploads' relativ zum Container-WORKDIR
-    cb(null, 'uploads/'); 
+    cb(null, 'uploads/');
   },
   filename: (req, file, cb) => {
-    // Erstellt einen eindeutigen Dateinamen
-    cb(null, Date.now() + path.extname(file.originalname)); 
+    cb(null, Date.now() + path.extname(file.originalname));
   }
 });
 
-// Multer initialisieren
 const upload = multer({ storage: storage });
 
-// ----------------------------------------------------
-// Dummy-Logik für die Authentifizierung (wird später ersetzt)
-// ----------------------------------------------------
+// --- Dummy Auth (später JWT) ---
 const authenticateToken = (req, res, next) => {
-  // TODO: Hier wird später die JWT-Token-Validierung implementiert!
-  // Beispiel: 
-  // const authHeader = req.headers['authorization'];
-  // const token = authHeader && authHeader.split(' ')[1];
-  // if (token == null) return res.sendStatus(401); 
-  
-  // Für jetzt lassen wir es durch (TEMPORÄR: Authentifizierung fehlt noch)
-  req.userId = 1; // Simulierter eingeloggter User
+  req.userId = 1; // Platzhalter Benutzer
   next();
 };
 
-// ----------------------------------------------------
-// API-Endpunkte
-// ----------------------------------------------------
+// --- API ROUTES ---
 
-// 1. Test-Endpunkt
+// ✅ Test-Route
 router.get('/status', (req, res) => {
-  res.status(200).json({ status: 'OK', message: 'API Endpunkte sind erreichbar.' });
+  res.status(200).json({ status: 'OK', message: 'API online ✅' });
 });
 
-
-// 2. Bild-Upload-Endpunkt
+// ✅ Speicher Memory (Bild + Text)
 router.post('/memories/upload', authenticateToken, upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Keine Datei hochgeladen.' });
   }
 
   try {
-    // 1. Lokaler Speicherpfad des Bildes (innerhalb des Containers)
-    const filePath = req.file.path; 
+    const filePath = req.file.path;
 
-    // 2. Speichern des Eintrags in der Datenbank
+    // 📥 Request Body Werte inkl. neuem text-Feld
+    const { title, description, text } = req.body;
+
+    // 💾 In DB speichern
     const newMemory = await query(
-      'INSERT INTO memories (title, description, file_path, uploaded_by_user_id) VALUES ($1, $2, $3, $4) RETURNING *',
+      `INSERT INTO memories (title, description, file_path, uploaded_by_user_id, text) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [
-        req.body.title || 'Gemeinsame Erinnerung', 
-        req.body.description || 'Ein schöner Moment.', 
-        filePath, 
-        req.userId // Simulierter User
+        title || 'Gemeinsame Erinnerung',
+        description || 'Ein schöner Moment.',
+        filePath,
+        req.userId,
+        text || "" // ✅ Wenn kein Text eingegeben wurde
       ]
     );
 
-    // 3. Erfolgreiche Antwort an die App
-    res.status(201).json({ 
+    res.status(201).json({
       message: 'Erinnerung erfolgreich gespeichert!',
       memory: newMemory.rows[0],
-      // Wichtig: Die mobile App muss diesen Pfad über den API-Port erreichen! 
-      // z.B. http://HOST-IP:3000/uploads/DATEINAME.jpg
-      public_url: `/uploads/${req.file.filename}` 
+      public_url: `/uploads/${req.file.filename}`
     });
 
   } catch (error) {
     console.error('Datenbankfehler beim Speichern der Erinnerung:', error);
-    res.status(500).json({ error: 'Fehler beim Speichern der Erinnerung in der Datenbank.' });
+    res.status(500).json({ error: 'Fehler beim Speichern der Erinnerung.' });
   }
 });
 
-// 3. (Platzhalter) Alle Erinnerungen abrufen
+// ✅ Alle Memories abrufen
 router.get('/memories', authenticateToken, async (req, res) => {
-    try {
-        const result = await query('SELECT * FROM memories ORDER BY created_at DESC');
-        res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('Fehler beim Abrufen der Erinnerungen:', error);
-        res.status(500).json({ error: 'Abrufen der Erinnerungen fehlgeschlagen.' });
-    }
+  try {
+    const result = await query(
+      'SELECT * FROM memories ORDER BY created_at DESC'
+    );
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Fehler beim Abrufen der Erinnerungen:', error);
+    res.status(500).json({ error: 'Abrufen der Erinnerungen fehlgeschlagen.' });
+  }
 });
-
 
 export default router;

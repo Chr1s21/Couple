@@ -1,15 +1,16 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, Button, Image, Alert } from 'react-native';
+import { StyleSheet, Text, View, Button, Image, Alert, TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, useEffect } from 'react';
 
-const API_URL = 'http://192.168.2.103:3000/api'; 
+const API_URL = 'http://192.168.2.103:3000/api';
 
 export default function App() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('Backend bereit: IP anpassen!');
   const [isPermissionGranted, setIsPermissionGranted] = useState(false);
+  const [memoryText, setMemoryText] = useState(""); // ✅ Text für das Bild
 
   // 🔐 Berechtigungen prüfen
   useEffect(() => {
@@ -35,6 +36,7 @@ export default function App() {
       formData.append("image", { uri: imageUri, name: filename, type: mimeType });
       formData.append("title", "Mein erster Upload");
       formData.append("description", "Getestet am " + new Date().toLocaleTimeString());
+      formData.append("text", memoryText); // ✅ Text mitsenden
 
       const response = await fetch(`${API_URL}/memories/upload`, {
         method: 'POST',
@@ -50,7 +52,9 @@ export default function App() {
       if (!response.ok) throw new Error(data.error);
 
       setUploadMessage(`✅ Upload erfolgreich! ID: ${data.memory.id}`);
-      Alert.alert("Erfolg", "Bild erfolgreich gespeichert.");
+      Alert.alert("Erfolg", "Bild & Text erfolgreich gespeichert.");
+
+      setMemoryText(""); // ✅ Textfeld zurücksetzen
     } catch (err) {
       console.error(err);
       setUploadMessage(`❌ Fehler: ${err.message}`);
@@ -75,7 +79,7 @@ export default function App() {
     setIsPermissionGranted(true);
 
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, // ✅ FIX
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -94,6 +98,15 @@ export default function App() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Couple Memories</Text>
+
+      {/* ✅ Text Input */}
+      <TextInput
+        style={styles.textInput}
+        placeholder="Text zum Bild eingeben..."
+        value={memoryText}
+        onChangeText={setMemoryText}
+        multiline
+      />
 
       <Button 
         title={isUploading ? "Lädt..." : "Bild auswählen & hochladen"} 
@@ -129,11 +142,22 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 30,
+    marginBottom: 20,
     color: '#333',
   },
+  textInput: {
+    width: '100%',
+    minHeight: 80,
+    borderColor: '#ccc',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 15,
+    backgroundColor: '#fff',
+    textAlignVertical: 'top',
+  },
   statusText: {
-    marginTop: 20,
+    marginTop: 10,
     marginBottom: 10,
     fontSize: 14,
     textAlign: 'center',

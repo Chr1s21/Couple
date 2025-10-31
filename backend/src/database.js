@@ -8,7 +8,7 @@ const { Pool } = pg;
 // Konfiguration der Datenbankverbindung
 const pool = new Pool({
   user: process.env.DB_USER,
-  host: process.env.DB_HOST, // 'db' ist der Hostname im Docker-Netzwerk
+  host: process.env.DB_HOST, // "db" im Docker-Netzwerk
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT,
@@ -22,30 +22,29 @@ export const connectDB = async () => {
     await pool.connect();
     console.log('✅ PostgreSQL verbunden.');
 
-    // SQL-Befehl zum Erstellen der Tabelle, falls sie nicht existiert
+    // SQL zum Erstellen der Tabelle (inkl. Textfeld)
     const createTableQuery = `
       CREATE TABLE IF NOT EXISTS memories (
         id SERIAL PRIMARY KEY,
         title VARCHAR(255) NOT NULL,
         description TEXT,
+        text TEXT, -- ✅ Beschreibungstext zum Bild
         file_path VARCHAR(255) NOT NULL,
-        uploaded_by_user_id INTEGER, -- Später für Benutzerverwaltung
+        uploaded_by_user_id INTEGER, 
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `;
+
     await pool.query(createTableQuery);
     console.log('✅ Tabelle "memories" erfolgreich geprüft/erstellt.');
 
   } catch (error) {
     console.error('❌ Fehler beim Verbinden der Datenbank oder Initialisieren:', error.message);
-    // Beenden Sie die Anwendung im Fehlerfall, um eine Fehlkonfiguration anzuzeigen
     process.exit(1); 
   }
 };
 
 /**
- * Führt eine generische SQL-Abfrage aus.
- * @param {string} text - Die SQL-Abfrage.
- * @param {Array} params - Die Parameter für die Abfrage.
+ * Führt eine SQL-Abfrage aus
  */
 export const query = (text, params) => pool.query(text, params);
