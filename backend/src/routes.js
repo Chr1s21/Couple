@@ -5,78 +5,72 @@ import { query } from './database.js';
 
 const router = Router();
 
-// --- Multer Konfiguration (Uploads lokal speichern) ---
+// Multer Storage
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  }
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
 });
+const upload = multer({ storage });
 
-const upload = multer({ storage: storage });
-
-// --- Dummy Auth (später JWT) ---
+// Fake Auth
 const authenticateToken = (req, res, next) => {
-  req.userId = 1; // Platzhalter Benutzer
+  req.userId = 1;
   next();
 };
 
-// --- API ROUTES ---
-
-// ✅ Test-Route
+// ✅ API status
 router.get('/status', (req, res) => {
-  res.status(200).json({ status: 'OK', message: 'API online ✅' });
+  res.json({ status: 'OK' });
 });
 
-// ✅ Speicher Memory (Bild + Text)
+// ✅ Upload Memory
 router.post('/memories/upload', authenticateToken, upload.single('image'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Keine Datei hochgeladen.' });
-  }
-
   try {
-    const filePath = req.file.path;
-
-    // 📥 Request Body Werte inkl. neuem text-Feld
-    const { title, description, text } = req.body;
-
-    // 💾 In DB speichern
-    const newMemory = await query(
-      `INSERT INTO memories (title, description, file_path, uploaded_by_user_id, text) 
+    const result = await query(
+      `INSERT INTO memories (title, description, text, file_path, uploaded_by_user_id)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [
-        title || 'Gemeinsame Erinnerung',
-        description || 'Ein schöner Moment.',
-        filePath,
-        req.userId,
-        text || "" // ✅ Wenn kein Text eingegeben wurde
+        req.body.title || "Gemeinsame Erinnerung",
+        req.body.description || "Ein schöner Moment.",
+        req.body.text || "",
+        req.file.path,
+        req.userId
       ]
     );
 
-    res.status(201).json({
-      message: 'Erinnerung erfolgreich gespeichert!',
-      memory: newMemory.rows[0],
+    res.json({
+      message: "Erinnerung erfolgreich gespeichert!",
+      memory: result.rows[0],
       public_url: `/uploads/${req.file.filename}`
     });
 
-  } catch (error) {
-    console.error('Datenbankfehler beim Speichern der Erinnerung:', error);
-    res.status(500).json({ error: 'Fehler beim Speichern der Erinnerung.' });
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({ error: "Fehler beim Upload" });
   }
 });
 
-// ✅ Alle Memories abrufen
-router.get('/memories', authenticateToken, async (req, res) => {
+// ✅ Filter Memories by Year & Month
+router.get('/memories/filter', authenticateToken, async (req, res) => {
+  const { year, month } = req.query;
+
+  if (!year || !month) {
+    return res.status(400).json({ error: "year und month sind erforderlich" });
+  }
+
   try {
     const result = await query(
-      'SELECT * FROM memories ORDER BY created_at DESC'
+      `SELECT * FROM memories
+       WHERE EXTRACT(YEAR FROM created_at) = $1
+       AND EXTRACT(MONTH FROM created_at) = $2
+       ORDER BY created_at ASC`,
+      [year, month]
     );
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Fehler beim Abrufen der Erinnerungen:', error);
-    res.status(500).json({ error: 'Abrufen der Erinnerungen fehlgeschlagen.' });
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Filter error:", err);
+    res.status(500).json({ error: "Fehler beim Abrufen" });
   }
 });
 
